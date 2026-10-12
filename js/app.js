@@ -78,7 +78,7 @@
   // online voices (Edge) sometimes never start, and long utterances can cut off in Chrome.
   // So: wait after cancelling, speak sentence by sentence, keep references alive,
   // and retry once (then fall back to an offline voice of the same accent) if nothing starts.
-  let playId = 0, live = [], last = { text: null, accent: null, voice: null };
+  let playId = 0, live = [], last = { text: null, accent: null, name: null };
   const statusEl = () => document.getElementById("plays");
   const playBtn = () => document.getElementById("play");
   function setPlaying(on) { const b = playBtn(); if (b) { b.disabled = on; b.textContent = on ? "Playing…" : (b.dataset.label || "▶ Play"); } }
@@ -86,13 +86,18 @@
   function speak(text, onEnd) {
     if (!("speechSynthesis" in window)) { const pl = statusEl(); if (pl) pl.textContent = "This browser can't play speech. Please use Chrome or Edge."; return null; }
     const b = playBtn(); if (b && !b.dataset.label) b.dataset.label = b.textContent;
-    // Same text and same accent setting: reuse the voice so replays sound identical.
-    let v = (last.text === text && last.accent === state.accent && last.voice) ? last.voice : chooseVoice();
-    last = { text, accent: state.accent, voice: v };
+    // Same text and same accent: reuse the voice (looked up fresh by name, because Edge
+    // refreshes its voice list and old voice objects can go silent).
+    const fresh = name => voices.find(x => x.name === name);
+    let v = (last.text === text && last.accent === state.accent && last.name && fresh(last.name)) || chooseVoice();
+    last = { text, accent: state.accent, name: v ? v.name : null };
     const id = ++playId;
     const chunks = text.match(/[^.!?]+[.!?]*/g).map(s => s.trim()).filter(Boolean);
+    // Only cancel when something is actually playing: cancel() on an idle engine can
+    // leave Edge's online voices silent for the next utterance.
     const wasBusy = speechSynthesis.speaking || speechSynthesis.pending;
-    speechSynthesis.cancel(); stopNoise();
+    if (wasBusy) speechSynthesis.cancel();
+    stopNoise();
     setPlaying(true);
     let started = false, retried = false;
 
@@ -104,21 +109,33 @@
         const u = new SpeechSynthesisUtterance(c);
         if (voice) { u.voice = voice; u.lang = voice.lang; }
         u.rate = state.rate;
-        u.onstart = () => { if (id !== playId) return; if (!started) { started = true; startNoise(); } };
+        u.onstart = () => {
+          if (id !== playId || started) return;
+          started = true; startNoise();
+          // Safety net: some voices never fire "end"; free the Play button after the
+          // longest time this text could reasonably take.
+          const maxMs = (text.length * 110) / state.rate + 5000;
+          setTimeout(() => { if (id === playId) finish(); }, maxMs);
+        };
         if (i === chunks.length - 1) u.onend = finish;
-        u.onerror = e => { if (id !== playId || e.error === "interrupted" || e.error === "canceled") return; finish(); };
+        u.onerror = e => {
+          if (id !== playId || e.error === "interrupted" || e.error === "canceled") return;
+          if (!started) return; // let the watchdog retry
+          const pl = statusEl(); if (pl) pl.textContent = "Voice error: " + (e.error || "unknown") + ". Try again or pick another accent.";
+          finish();
+        };
         return u;
       });
       live.forEach(u => speechSynthesis.speak(u));
       // Watchdog: if nothing has started in 4 s, retry once, then try an offline voice.
       setTimeout(() => {
         if (id !== playId || started) return;
-        speechSynthesis.cancel();
+        if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
         if (!retried) {
           retried = true;
           const offline = voice && !voice.localService && voices.find(x => tag(x) === tag(voice) && x.localService);
-          const next = offline || voice;
-          if (offline) last.voice = offline;
+          const next = offline || (voice && fresh(voice.name)) || voice;
+          if (offline) last.name = offline.name;
           const pl = statusEl(); if (pl) pl.textContent = offline ? "Online voice didn't respond, using an offline voice…" : "Retrying…";
           setTimeout(() => run(next), 300);
         } else {
@@ -127,10 +144,10 @@
         }
       }, 4000);
     }
-    setTimeout(() => run(v), wasBusy ? 350 : 60);
+    setTimeout(() => run(v), wasBusy ? 400 : 150);
     return v ? accentOf(v) : "Default";
   }
-  function stopAudio() { playId++; live = []; if ("speechSynthesis" in window) speechSynthesis.cancel(); stopNoise(); setPlaying(false); }
+  function stopAudio() { playId++; live = []; if ("speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel(); stopNoise(); setPlaying(false); }
 
   // ---------- shared UI ----------
   function settingsBar() {
@@ -160,7 +177,7 @@
   }
   function bindSettings() {
     const a = $("#set-accent"), r = $("#set-rate"), n = $("#set-noise");
-    if (a) a.onchange = () => { stopAudio(); last.voice = null; state.accent = a.value; save(); };
+    if (a) a.onchange = () => { stopAudio(); last.name = null; state.accent = a.value; save(); };
     if (r) r.oninput = () => { state.rate = +r.value; $("#rate-val").textContent = state.rate.toFixed(2) + "×"; save(); };
     if (n) n.onchange = () => { state.noise = n.value; save(); };
   }
