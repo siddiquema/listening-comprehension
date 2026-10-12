@@ -3,6 +3,7 @@
   --gold: #d4a63a; --gold-soft: #f0d58c; --ink: #eef1f8; --muted: #a8b2cf;
   --ok: #4cc38a; --bad: #ef6b6b; --amber: #f2b84b;
   --radius: 12px;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -17,7 +18,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .top {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--navy-2);
-  position: sticky; top: 0; z-index: 5;
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
 }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-weight: 600; }
 .brand .mark { width: 30px; height: 30px; border-radius: 8px; background: var(--gold); color: var(--navy); display: grid; place-items: center; font-family: Fraunces, serif; font-size: 20px; }

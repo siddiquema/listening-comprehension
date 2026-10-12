@@ -75,7 +75,7 @@
   function stopNoise() { try { noiseNode && noiseNode.stop(); } catch (e) {} noiseNode = null; }
 
   function speak(text, onEnd) {
-    if (!("speechSynthesis" in window)) { alert("Your browser can't play speech. Please try Chrome or Edge."); return null; }
+    if (!("speechSynthesis" in window)) { const pl = document.getElementById("plays"); if (pl) pl.textContent = "This browser can't play speech. Please use Chrome or Edge."; return null; }
     speechSynthesis.cancel(); stopNoise();
     const u = new SpeechSynthesisUtterance(text);
     const v = chooseVoice();
@@ -294,7 +294,7 @@
     $("#submit").onclick = () => {
       if (done) return;
       if (mode === "listen" && !plays) { $("#plays").textContent = "Press Play first"; return; }
-      if (mode === "read" && reading) { alert("Press “Hide and answer” first, then fill in the facts from memory."); return; }
+      if (mode === "read" && reading) { $("#hide").textContent = "Hide and answer first"; $("#hide").focus(); return; }
       done = true; stopAudio();
       const answers = item.facts.map((_, i) => $(`[name=f${i}]`).value);
       const r = S.capture(item.facts, answers);
@@ -322,21 +322,33 @@
     app.innerHTML = `${back}
       <section class="panel">
         <div class="phead"><span class="lvl">My progress</span><h2>${h.length} attempts on this device</h2></div>
-        <p class="hint">Testing for us? Download your results and send the file back. Nothing is uploaded automatically.</p>
-        <div class="actions"><button id="csv" class="primary" ${h.length ? "" : "disabled"}>Download results (CSV)</button><button id="clear" ${h.length ? "" : "disabled"}>Clear history</button></div>
+        <p class="hint">Testing for us? Download or copy your results and send them back. Nothing is uploaded automatically.</p>
+        <div class="actions"><button id="csv" class="primary" ${h.length ? "" : "disabled"}>Download results (CSV)</button><button id="copy" ${h.length ? "" : "disabled"}>Copy results</button><button id="clear" ${h.length ? "" : "disabled"}>Clear history</button><span class="plays" id="copied"></span></div>
+        <textarea id="csvbox" rows="5" hidden readonly></textarea>
         ${h.length ? `<div class="tablewrap"><table class="ptable"><thead><tr><th>When</th><th>Track</th><th>Exercise</th><th>Score</th><th>Speed</th><th>Time</th><th>Accent</th></tr></thead><tbody>
           ${h.slice(0, 100).map(x => `<tr><td>${new Date(x.at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</td><td>${x.track === "desk" ? "Desk" : "Student"}</td><td>${label[x.mode]}${x.via === "read" ? " (read)" : ""}</td><td>${pct(x.accuracy)}</td><td>${x.wpm ? x.wpm + " wpm" : "—"}</td><td>${x.seconds}s</td><td>${esc(x.accent || "—")}</td></tr>`).join("")}
         </tbody></table></div>` : `<p>No attempts yet. <a href="#home">Start practising</a>.</p>`}
       </section>`;
+    const toCsv = () => {
+      const cols = ["at", "learner", "track", "mode", "via", "item", "accuracy", "completion", "wpm", "seconds", "replays", "accent", "rate", "noise"];
+      return [cols.join(",")].concat(history().map(x => cols.map(c => `"${String(x[c] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n");
+    };
     $("#csv").onclick = () => {
-      const cols = ["at", "learner", "track", "mode", "via", "item", "accuracy", "wpm", "seconds", "replays", "accent", "rate", "noise"];
-      const csv = [cols.join(",")].concat(history().map(x => cols.map(c => `"${String(x[c] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n");
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.href = URL.createObjectURL(new Blob([toCsv()], { type: "text/csv" }));
       a.download = `listen-type-results-${(state.name || "learner").replace(/\W+/g, "-")}.csv`;
       a.click();
     };
-    $("#clear").onclick = () => { if (confirm("Delete all results on this device?")) { store.set("elt_history", []); progress(); } };
+    $("#copy").onclick = () => {
+      const csv = toCsv(), msg = $("#copied");
+      const fallback = () => { const t = $("#csvbox"); t.hidden = false; t.value = csv; t.select(); msg.textContent = "Select-all and copy the text below, then paste it into an email."; };
+      try { navigator.clipboard.writeText(csv).then(() => { msg.textContent = "Copied. Paste it into an email or a spreadsheet."; }, fallback); } catch (e) { fallback(); }
+    };
+    let armed = false;
+    $("#clear").onclick = () => {
+      if (!armed) { armed = true; $("#clear").textContent = "Click again to delete all"; return; }
+      store.set("elt_history", []); progress();
+    };
   }
 
   // ---------- router ----------
