@@ -92,7 +92,10 @@
   // ---------- shared UI ----------
   function settingsBar() {
     const accents = accentList();
-    return `
+    const have = t => accents.some(([tg]) => tg.toLowerCase() === t);
+    const missing = ["en-gb", "en-au"].filter(t => !have(t)).map(t => t === "en-gb" ? "British" : "Australian");
+    const tip = missing.length ? `<p class="warn">This browser has no ${missing.join(" or ")} voice. For more accents, open this page in Microsoft Edge (widest choice) or Chrome on a laptop.</p>` : "";
+    return `${tip}
       <div class="settings">
         <label>Accent
           <select id="set-accent">
