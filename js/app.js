@@ -74,20 +74,63 @@
   }
   function stopNoise() { try { noiseNode && noiseNode.stop(); } catch (e) {} noiseNode = null; }
 
+  // Speech playback. Browsers drop a new utterance if it is queued right after cancel(),
+  // online voices (Edge) sometimes never start, and long utterances can cut off in Chrome.
+  // So: wait after cancelling, speak sentence by sentence, keep references alive,
+  // and retry once (then fall back to an offline voice of the same accent) if nothing starts.
+  let playId = 0, live = [], last = { text: null, accent: null, voice: null };
+  const statusEl = () => document.getElementById("plays");
+  const playBtn = () => document.getElementById("play");
+  function setPlaying(on) { const b = playBtn(); if (b) { b.disabled = on; b.textContent = on ? "Playing…" : (b.dataset.label || "▶ Play"); } }
+
   function speak(text, onEnd) {
-    if (!("speechSynthesis" in window)) { const pl = document.getElementById("plays"); if (pl) pl.textContent = "This browser can't play speech. Please use Chrome or Edge."; return null; }
+    if (!("speechSynthesis" in window)) { const pl = statusEl(); if (pl) pl.textContent = "This browser can't play speech. Please use Chrome or Edge."; return null; }
+    const b = playBtn(); if (b && !b.dataset.label) b.dataset.label = b.textContent;
+    // Same text and same accent setting: reuse the voice so replays sound identical.
+    let v = (last.text === text && last.accent === state.accent && last.voice) ? last.voice : chooseVoice();
+    last = { text, accent: state.accent, voice: v };
+    const id = ++playId;
+    const chunks = text.match(/[^.!?]+[.!?]*/g).map(s => s.trim()).filter(Boolean);
+    const wasBusy = speechSynthesis.speaking || speechSynthesis.pending;
     speechSynthesis.cancel(); stopNoise();
-    const u = new SpeechSynthesisUtterance(text);
-    const v = chooseVoice();
-    if (v) { u.voice = v; u.lang = v.lang; }
-    u.rate = state.rate;
-    u.onstart = startNoise;
-    u.onend = () => { stopNoise(); onEnd && onEnd(); };
-    u.onerror = () => { stopNoise(); onEnd && onEnd(); };
-    speechSynthesis.speak(u);
+    setPlaying(true);
+    let started = false, retried = false;
+
+    function finish() { if (id !== playId) return; live = []; stopNoise(); setPlaying(false); onEnd && onEnd(); }
+    function run(voice) {
+      if (id !== playId) return;
+      speechSynthesis.resume();
+      live = chunks.map((c, i) => {
+        const u = new SpeechSynthesisUtterance(c);
+        if (voice) { u.voice = voice; u.lang = voice.lang; }
+        u.rate = state.rate;
+        u.onstart = () => { if (id !== playId) return; if (!started) { started = true; startNoise(); } };
+        if (i === chunks.length - 1) u.onend = finish;
+        u.onerror = e => { if (id !== playId || e.error === "interrupted" || e.error === "canceled") return; finish(); };
+        return u;
+      });
+      live.forEach(u => speechSynthesis.speak(u));
+      // Watchdog: if nothing has started in 4 s, retry once, then try an offline voice.
+      setTimeout(() => {
+        if (id !== playId || started) return;
+        speechSynthesis.cancel();
+        if (!retried) {
+          retried = true;
+          const offline = voice && !voice.localService && voices.find(x => tag(x) === tag(voice) && x.localService);
+          const next = offline || voice;
+          if (offline) last.voice = offline;
+          const pl = statusEl(); if (pl) pl.textContent = offline ? "Online voice didn't respond, using an offline voice…" : "Retrying…";
+          setTimeout(() => run(next), 300);
+        } else {
+          const pl = statusEl(); if (pl) pl.textContent = "The voice didn't start. Pick another accent or reload the page.";
+          playId++; live = []; setPlaying(false);
+        }
+      }, 4000);
+    }
+    setTimeout(() => run(v), wasBusy ? 350 : 60);
     return v ? accentOf(v) : "Default";
   }
-  function stopAudio() { if ("speechSynthesis" in window) speechSynthesis.cancel(); stopNoise(); }
+  function stopAudio() { playId++; live = []; if ("speechSynthesis" in window) speechSynthesis.cancel(); stopNoise(); setPlaying(false); }
 
   // ---------- shared UI ----------
   function settingsBar() {
@@ -117,7 +160,7 @@
   }
   function bindSettings() {
     const a = $("#set-accent"), r = $("#set-rate"), n = $("#set-noise");
-    if (a) a.onchange = () => { state.accent = a.value; save(); };
+    if (a) a.onchange = () => { stopAudio(); last.voice = null; state.accent = a.value; save(); };
     if (r) r.oninput = () => { state.rate = +r.value; $("#rate-val").textContent = state.rate.toFixed(2) + "×"; save(); };
     if (n) n.onchange = () => { state.noise = n.value; save(); };
   }

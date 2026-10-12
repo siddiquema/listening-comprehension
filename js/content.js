@@ -109,7 +109,7 @@ window.CONTENT = {
     student: [
       {
         id: "sc1", title: "Class announcement",
-        script: "Good morning everyone. A quick announcement. The guest lecture on artificial intelligence has moved from Wednesday to Thursday, same time, three p.m., but the venue is now the seminar hall on the first floor. Attendance is compulsory for third-year students, and please bring your ID cards.",
+        script: "Good morning everyone. A quick announcement. The guest lecture on artificial intelligence has moved from Wednesday to Thursday, same time, three in the afternoon, but the venue is now the seminar hall on the first floor. Attendance is compulsory for third-year students, and please bring your ID cards.",
         facts: [
           { label: "Event", accept: ["guest lecture", "lecture", "artificial intelligence", "ai"] },
           { label: "New day", accept: ["thursday"] },
@@ -121,7 +121,7 @@ window.CONTENT = {
       },
       {
         id: "sc2", title: "Interview instructions",
-        script: "Hello, this is Anna from the recruitment team. Thank you for applying for the graduate trainee role. Your online interview is scheduled for the twentieth of November at ten thirty a.m. You'll receive a Teams link by email. Please keep your resume and a government ID ready, and test your camera beforehand.",
+        script: "Hello, this is Anna from the recruitment team. Thank you for applying for the graduate trainee role. Your online interview is scheduled for the twentieth of November at ten thirty in the morning You'll receive a Teams link by email. Please keep your resume and a government ID ready, and test your camera beforehand.",
         facts: [
           { label: "Caller name", accept: ["anna"] },
           { label: "Role", accept: ["graduate trainee", "trainee"] },
